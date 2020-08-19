@@ -809,6 +809,37 @@ Zotero.ZotFile = new function() {
     });
 
     /**
+     * Attach file by copy to zotero items without renaming source file.
+     * @param  {Zotero.Item} item  Regular zotero item.
+     * @param  {string}      path  Filepath.
+     * @return {int}               Zotero attachment id
+     */
+    this.attachFileDwim = Zotero.Promise.coroutine(function* (item, path) {
+        if (!item.isRegularItem()) throw("Zotero.ZotFile.attachFile(): 'item' is not a regular zotero attachment item.");
+        let options = {file: path, libraryID: item.libraryID, parentItemID: item.id, collections: undefined};
+        // create imported attachment
+        if (this.getPref('import') || item.library.libraryType != 'user') {
+            this.excludeAutorenameKeys.push(item.key);
+            var att = yield Zotero.Attachments.importFromFile(options);
+            // rename attachment
+            // att = yield this.renameAttachment(att);
+        }
+        // create linked attachment
+        else {
+            // get filename and location
+            let filename = this.getFilename(item, OS.Path.basename(path)),
+                subfolder = !this.getPref('import') & this.getPref('subfolder') ? this.getPref('subfolderFormat') : '',
+                location = this.getLocation(this.getPref('dest_dir'), item, subfolder);
+            // move and rename file
+            options.file = yield this.moveFile(path, location, filename);
+            // create zotero link to file
+            var att = yield Zotero.Attachments.linkFromFile(options);
+        }
+        // return attachment item
+        return att;
+    });
+
+    /**
      * Attach last file (or all files) from source directory
      * @return {void}
      */
@@ -845,7 +876,7 @@ Zotero.ZotFile = new function() {
         // attach files
         var progress_win = this.progressWindow(this.ZFgetString('general.newAttachmentsAdded'));
         for (var i = 0; i < paths.length; i++) {
-            let att = yield this.attachFile(item, paths[i]);
+            let att = yield this.attachFileDwim(item, paths[i]);
             progress = new progress_win.ItemProgress(att.getImageSrc(), att.getField('title'));
             progress.setProgress(100);
         }
